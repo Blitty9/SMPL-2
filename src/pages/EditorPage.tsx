@@ -1,27 +1,34 @@
 import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Home, RotateCcw } from 'lucide-react';
+import { Home, RotateCcw, History } from 'lucide-react';
 import IdeaInput from '../components/editor/IdeaInput';
 import Tabs from '../components/editor/Tabs';
 import CodeOutput from '../components/editor/CodeOutput';
 import TokenStats from '../components/editor/TokenStats';
+import HistoryPanel from '../components/editor/HistoryPanel';
 import { generateExports } from '../lib/schema/generateExports';
 import { formatExpanded } from '../lib/schema/formatExpanded';
 import { countTokens, countInputTokens } from '../lib/utils/tokenCounter';
+import { trackEvent, AnalyticsEvents } from '../lib/analytics';
+import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../lib/supabase';
 import type { AppSchema } from '../lib/utils/schema';
 import type { Example } from '../data/examples';
 import type { EditorMode, AITool } from '../components/editor/ModeToggle';
+import type { PromptHistoryItem } from '../lib/promptHistory';
 
 type TabType = 'json' | 'dsl' | 'expanded' | 'exports' | 'analysis';
 
 export default function EditorPage() {
   const location = useLocation();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [ideaInput, setIdeaInput] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [mode, setMode] = useState<EditorMode>('app');
   const [aiTool, setAiTool] = useState<AITool>('cursor');
   const [activeTab, setActiveTab] = useState<TabType>('json');
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   // Store results separately for each mode
   const [appResults, setAppResults] = useState<{
     json: string;
@@ -229,15 +236,20 @@ export default function EditorPage() {
     if (!ideaInput.trim()) return;
 
     setIsGenerating(true);
+    trackEvent({ name: AnalyticsEvents.EDITOR_OPENED });
 
     try {
       const apiEndpoint = mode === 'app' ? 'app-gen' : 'prompt-gen';
       const generateUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/${apiEndpoint}`;
 
+      // Get auth token for authenticated users
+      const { data: { session } } = await supabase.auth.getSession();
+      const authToken = session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY;
+
       const response = await fetch(generateUrl, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Authorization': `Bearer ${authToken}`,
           'apikey': `${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
           'Content-Type': 'application/json',
         },
@@ -308,6 +320,10 @@ export default function EditorPage() {
         });
 
         setIsGenerating(false);
+        trackEvent({ 
+          name: AnalyticsEvents.PROMPT_GENERATED,
+          props: { tool: aiTool }
+        });
         return;
       }
 
@@ -358,8 +374,17 @@ export default function EditorPage() {
         jsonExact: jsonTokenResult.isExact,
         smplExact: smplTokenResult.isExact,
       });
+      
+      trackEvent({ 
+        name: AnalyticsEvents.SCHEMA_GENERATED,
+        props: { tool: aiTool, mode: mode }
+      });
     } catch (error) {
       console.error('Generation failed:', error);
+      trackEvent({ 
+        name: AnalyticsEvents.ERROR_OCCURRED,
+        props: { error: 'generation_failed', mode: mode }
+      });
       setResults({
         json: JSON.stringify({ error: error instanceof Error ? error.message : 'Failed to generate' }, null, 2),
         dsl: 'Error generating compact format',
@@ -473,6 +498,105 @@ export default function EditorPage() {
     }
   };
 
+  const handleLoadFromHistory = (item: PromptHistoryItem) => {
+    // Set the input text
+    setIdeaInput(item.input_text);
+    
+    // Set the mode
+    if (item.mode === 'app' || item.mode === 'prompt') {
+      setMode(item.mode);
+    }
+    
+    // Set the AI tool if available
+    if (item.tool && ['cursor', 'bolt', 'v0', 'replit', 'claude'].includes(item.tool)) {
+      setAiTool(item.tool as AITool);
+    }
+    
+    // Load the results
+    if (item.mode === 'app') {
+      const jsonSchema = typeof item.json_schema === 'string' 
+        ? JSON.parse(item.json_schema) 
+        : item.json_schema;
+      
+      const exports = generateExports(jsonSchema as AppSchema, item.smpl_dsl, aiTool);
+      const expanded = formatExpanded(jsonSchema as AppSchema);
+      
+      // Calculate token counts
+      const inputTokenResult = countInputTokens(item.input_text, aiTool);
+      const jsonTokenResult = countTokens(JSON.stringify(item.json_schema, null, 2), aiTool);
+      const smplTokenResult = countTokens(item.smpl_dsl, aiTool);
+      
+      setAppResults({
+        json: JSON.stringify(item.json_schema, null, 2),
+        dsl: item.smpl_dsl,
+        expanded: expanded,
+        exports: exports,
+      });
+      
+      setAppOriginalDsl(item.smpl_dsl);
+      setAppTokenCounts({
+        original: inputTokenResult.count,
+        json: jsonTokenResult.count,
+        smpl: smplTokenResult.count,
+        originalExact: inputTokenResult.isExact,
+        jsonExact: jsonTokenResult.isExact,
+        smplExact: smplTokenResult.isExact,
+      });
+    } else {
+      // Prompt mode
+      const jsonPrompt = typeof item.json_schema === 'string'
+        ? item.json_schema
+        : JSON.stringify(item.json_schema, null, 2);
+      
+      const exportPrompts = item.export_prompts || {};
+      const sortedEntries = Object.entries(exportPrompts).sort(([toolA], [toolB]) => {
+        if (toolA === aiTool) return -1;
+        if (toolB === aiTool) return 1;
+        return 0;
+      });
+      
+      const allExports = sortedEntries
+        .map(([tool, prompt]) => {
+          const toolName = tool.toUpperCase().replace(/([A-Z])/g, ' $1').trim();
+          const isBest = tool === aiTool;
+          return `${isBest ? '⭐ ' : ''}=== ${toolName} EXPORT PROMPT ===${isBest ? ' (SELECTED TOOL)' : ''}\n\n${prompt}`;
+        })
+        .join('\n\n---\n\n');
+      
+      const inputTokenResult = countInputTokens(item.input_text, aiTool);
+      const jsonTokenResult = countTokens(jsonPrompt, aiTool);
+      const smplTokenResult = countTokens(item.smpl_dsl, aiTool);
+      
+      const savings = inputTokenResult.count - smplTokenResult.count;
+      const savingsPercent = inputTokenResult.count > 0 
+        ? Math.round((savings / inputTokenResult.count) * 100 * 10) / 10 
+        : 0;
+      
+      const analysis = `Token Analysis\n\nOriginal Prompt: ${inputTokenResult.count} tokens${inputTokenResult.isExact ? ' (exact)' : ' (approximate)'}\nJSON Format: ${jsonTokenResult.count} tokens${jsonTokenResult.isExact ? ' (exact)' : ' (approximate)'}\nSMPL Compact: ${smplTokenResult.count} tokens${smplTokenResult.isExact ? ' (exact)' : ' (approximate)'}\n\nSavings: ${savings} tokens (${savingsPercent}%)`;
+      
+      setPromptResults({
+        json: jsonPrompt,
+        dsl: item.smpl_dsl,
+        expanded: item.expanded_spec || '',
+        exports: allExports,
+        analysis: analysis,
+      });
+      
+      setPromptOriginalDsl(item.smpl_dsl);
+      setPromptTokenCounts({
+        original: inputTokenResult.count,
+        json: jsonTokenResult.count,
+        smpl: smplTokenResult.count,
+        originalExact: inputTokenResult.isExact,
+        jsonExact: jsonTokenResult.isExact,
+        smplExact: smplTokenResult.isExact,
+      });
+    }
+    
+    // Switch to JSON tab to show the loaded content
+    setActiveTab('json');
+  };
+
   useEffect(() => {
     // When switching modes, restore the active tab and results for that mode
     // Don't clear results - they're stored separately per mode
@@ -511,6 +635,16 @@ export default function EditorPage() {
             <div className="flex items-center justify-between mb-4">
               <Tabs activeTab={activeTab} onTabChange={setActiveTab} mode={mode} />
               <div className="flex items-center gap-2">
+                {user && (
+                  <button
+                    onClick={() => setIsHistoryOpen(true)}
+                    className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md bg-[#111215] border border-[#2F333A] text-[#ECECEC] hover:border-[#6D5AE0] hover:bg-[#6D5AE0]/10 transition-colors duration-200"
+                    title="View History"
+                  >
+                    <History className="w-4 h-4" />
+                    <span>History</span>
+                  </button>
+                )}
                 <button
                   onClick={() => navigate('/')}
                   className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md bg-[#111215] border border-[#2F333A] text-[#ECECEC] hover:border-[#6D5AE0] hover:bg-[#6D5AE0]/10 transition-colors duration-200"
@@ -559,6 +693,15 @@ export default function EditorPage() {
           </div>
         </div>
       </div>
+      
+      {/* History Panel */}
+      {user && (
+        <HistoryPanel
+          isOpen={isHistoryOpen}
+          onClose={() => setIsHistoryOpen(false)}
+          onLoadPrompt={handleLoadFromHistory}
+        />
+      )}
     </div>
   );
 }

@@ -1,11 +1,15 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
-};
+import {
+  getCorsHeaders,
+  handleOptions,
+  validateInputSize,
+  sanitizeInput,
+  checkRateLimit,
+  getClientIdentifier,
+  sanitizeError,
+  createErrorResponse,
+} from "../_shared/security.ts";
 
 const TOOL_COMPRESSION_STRATEGIES = {
   v0: {
@@ -79,51 +83,56 @@ Output for atomic (bolt):
 Adapt compression strategy based on tool requirements while maintaining all critical information.`;
 
 Deno.serve(async (req: Request) => {
+  const corsHeaders = getCorsHeaders(req);
+
   if (req.method === "OPTIONS") {
-    return new Response(null, {
-      status: 200,
-      headers: corsHeaders,
-    });
+    return handleOptions(corsHeaders);
+  }
+
+  // Rate limiting
+  const clientId = getClientIdentifier(req);
+  const rateLimit = checkRateLimit(clientId);
+  if (!rateLimit.allowed) {
+    return createErrorResponse(
+      'Rate limit exceeded',
+      429,
+      corsHeaders,
+      `Too many requests. Please try again after ${new Date(rateLimit.resetAt).toISOString()}`
+    );
   }
 
   try {
     const { input, tool = 'cursor' } = await req.json();
 
-    if (!input || typeof input !== 'string') {
-      return new Response(
-        JSON.stringify({ error: 'Invalid input: input field is required' }),
-        {
-          status: 400,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
+    // Validate input size
+    const inputValidation = validateInputSize(input);
+    if (!inputValidation.valid) {
+      return createErrorResponse(
+        inputValidation.error || 'Invalid input',
+        400,
+        corsHeaders
       );
     }
 
+    // Sanitize input
+    const sanitizedInput = sanitizeInput(input);
+
     const validTools = ['cursor', 'claude', 'bolt', 'v0', 'replit', 'openai', 'anthropic'];
     if (!validTools.includes(tool)) {
-      return new Response(
-        JSON.stringify({
-          error: 'Invalid tool',
-          details: `Tool must be one of: ${validTools.join(', ')}`
-        }),
-        {
-          status: 400,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
+      return createErrorResponse(
+        'Invalid tool',
+        400,
+        corsHeaders,
+        `Tool must be one of: ${validTools.join(', ')}`
       );
     }
 
     const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
     if (!openaiApiKey) {
-      return new Response(
-        JSON.stringify({
-          error: 'OpenAI API key not configured',
-          details: 'Please add OPENAI_API_KEY to your environment variables',
-        }),
-        {
-          status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
+      return createErrorResponse(
+        'Service configuration error',
+        500,
+        corsHeaders
       );
     }
 
@@ -134,7 +143,7 @@ Compression Strategy: ${toolStrategy.strategy}
 Strategy Description: ${toolStrategy.description}
 
 Input to compress:
-${input}
+${sanitizedInput}
 
 Compress this into SMPL DSL format following the ${toolStrategy.strategy} strategy for ${tool}.`;
 
@@ -156,15 +165,11 @@ Compress this into SMPL DSL format following the ${toolStrategy.strategy} strate
 
     if (!response.ok) {
       const error = await response.text();
-      return new Response(
-        JSON.stringify({
-          error: 'OpenAI API request failed',
-          details: error,
-        }),
-        {
-          status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
+      console.error('OpenAI API error:', error);
+      return createErrorResponse(
+        'AI service temporarily unavailable',
+        500,
+        corsHeaders
       );
     }
 
@@ -172,19 +177,14 @@ Compress this into SMPL DSL format following the ${toolStrategy.strategy} strate
     const compactPrompt = data.choices[0]?.message?.content?.trim();
 
     if (!compactPrompt) {
-      return new Response(
-        JSON.stringify({
-          error: 'No compressed prompt generated',
-          details: 'The AI model did not return any content',
-        }),
-        {
-          status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
+      return createErrorResponse(
+        'AI service temporarily unavailable',
+        500,
+        corsHeaders
       );
     }
 
-    const inputTokens = Math.ceil(input.length / 4);
+    const inputTokens = Math.ceil(sanitizedInput.length / 4);
     const compactTokens = Math.ceil(compactPrompt.length / 4);
     const compressionRatio = ((inputTokens - compactTokens) / inputTokens * 100).toFixed(1);
 
@@ -196,7 +196,7 @@ Compress this into SMPL DSL format following the ${toolStrategy.strategy} strate
       .from('prompt_memory')
       .insert({
         tool,
-        input_text: input,
+        input_text: sanitizedInput,
         input_type: 'compression',
         input_format: 'text',
         mode: 'shrink',
@@ -209,6 +209,7 @@ Compress this into SMPL DSL format following the ${toolStrategy.strategy} strate
 
     if (dbError) {
       console.error('Failed to save to database:', dbError);
+      // Don't fail the request if DB save fails
     }
 
     return new Response(
@@ -231,16 +232,11 @@ Compress this into SMPL DSL format following the ${toolStrategy.strategy} strate
       }
     );
   } catch (error) {
-    console.error('Shrink prompt failed:', error);
-    return new Response(
-      JSON.stringify({
-        error: 'Shrink prompt failed',
-        details: error.message || 'Unknown error occurred',
-      }),
-      {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      }
+    const errorMessage = sanitizeError(error, 'An error occurred while processing your request');
+    return createErrorResponse(
+      errorMessage,
+      500,
+      corsHeaders
     );
   }
 });

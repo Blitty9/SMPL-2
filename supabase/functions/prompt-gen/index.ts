@@ -1,11 +1,15 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
-};
+import {
+  getCorsHeaders,
+  handleOptions,
+  validateInputSize,
+  sanitizeInput,
+  checkRateLimit,
+  getClientIdentifier,
+  sanitizeError,
+  createErrorResponse,
+} from "../_shared/security.ts";
 
 interface PromptSchema {
   task: string;
@@ -376,41 +380,50 @@ Build a complete, well-architected implementation following these comprehensive 
 }
 
 Deno.serve(async (req: Request) => {
+  const corsHeaders = getCorsHeaders(req);
+
   if (req.method === "OPTIONS") {
-    return new Response(null, {
-      status: 200,
-      headers: corsHeaders,
-    });
+    return handleOptions(corsHeaders);
+  }
+
+  // Rate limiting
+  const clientId = getClientIdentifier(req);
+  const rateLimit = checkRateLimit(clientId);
+  if (!rateLimit.allowed) {
+    return createErrorResponse(
+      'Rate limit exceeded',
+      429,
+      corsHeaders,
+      `Too many requests. Please try again after ${new Date(rateLimit.resetAt).toISOString()}`
+    );
   }
 
   try {
     const { text, tool = 'cursor' } = await req.json();
 
-    if (!text || typeof text !== 'string') {
-      return new Response(
-        JSON.stringify({ error: 'Invalid input: text field is required' }),
-        {
-          status: 400,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
+    // Validate input size
+    const inputValidation = validateInputSize(text);
+    if (!inputValidation.valid) {
+      return createErrorResponse(
+        inputValidation.error || 'Invalid input',
+        400,
+        corsHeaders
       );
     }
+
+    // Sanitize input
+    const sanitizedText = sanitizeInput(text);
 
     const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
     if (!openaiApiKey) {
-      return new Response(
-        JSON.stringify({
-          error: 'OpenAI API key not configured',
-          details: 'Please add OPENAI_API_KEY to your environment variables',
-        }),
-        {
-          status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
+      return createErrorResponse(
+        'Service configuration error',
+        500,
+        corsHeaders
       );
     }
 
-    const userPrompt = `Input Prompt:\n${text}\n\nConvert this into the structured PromptSchema format. Extract task, intent, entities, steps, and constraints. Return ONLY valid JSON.`;
+    const userPrompt = `Input Prompt:\n${sanitizedText}\n\nConvert this into the structured PromptSchema format. Extract task, intent, entities, steps, and constraints. Return ONLY valid JSON.`;
 
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -431,15 +444,11 @@ Deno.serve(async (req: Request) => {
 
     if (!response.ok) {
       const error = await response.text();
-      return new Response(
-        JSON.stringify({
-          error: 'OpenAI API request failed',
-          details: error,
-        }),
-        {
-          status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
+      console.error('OpenAI API error:', error);
+      return createErrorResponse(
+        'AI service temporarily unavailable',
+        500,
+        corsHeaders
       );
     }
 
@@ -447,15 +456,10 @@ Deno.serve(async (req: Request) => {
     const content = data.choices[0]?.message?.content;
 
     if (!content) {
-      return new Response(
-        JSON.stringify({
-          error: 'No response from OpenAI',
-          details: 'The AI model did not return any content',
-        }),
-        {
-          status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
+      return createErrorResponse(
+        'AI service temporarily unavailable',
+        500,
+        corsHeaders
       );
     }
 
@@ -463,44 +467,56 @@ Deno.serve(async (req: Request) => {
     try {
       schema = JSON.parse(content);
     } catch (parseError) {
-      return new Response(
-        JSON.stringify({
-          error: 'Failed to parse LLM response as JSON',
-          details: parseError.message,
-        }),
-        {
-          status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
+      console.error('JSON parse error:', parseError);
+      return createErrorResponse(
+        'Failed to process AI response',
+        500,
+        corsHeaders
       );
     }
 
     const jsonPrompt = JSON.stringify(schema, null, 2);
     const smplCompact = formatPromptCompact(schema);
     const expandedPrompt = formatPromptExpanded(schema);
-    const tokenStats = calculateTokenStats(text, jsonPrompt, smplCompact);
+    const tokenStats = calculateTokenStats(sanitizedText, jsonPrompt, smplCompact);
     const exportPrompts = generatePromptExports(schema, jsonPrompt, smplCompact);
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+    // Get user from auth token if available
+    let userId: string | null = null;
+    const authHeader = req.headers.get('Authorization');
+    if (authHeader) {
+      try {
+        const token = authHeader.replace('Bearer ', '');
+        const { data: { user } } = await supabase.auth.getUser(token);
+        userId = user?.id || null;
+      } catch (error) {
+        // If auth fails, continue without user_id (for anonymous users)
+        console.log('Could not extract user from token:', error);
+      }
+    }
+
     const { data: savedRecord, error: dbError } = await supabase
       .from('prompt_memory')
       .insert({
-        input_text: text,
+        input_text: sanitizedText,
         input_type: 'prompt',
         mode: 'prompt',
         json_schema: schema,
         smpl_dsl: smplCompact,
         expanded_spec: expandedPrompt,
         export_prompts: exportPrompts,
+        user_id: userId,
       })
       .select()
       .single();
 
     if (dbError) {
       console.error('Failed to save to database:', dbError);
+      // Don't fail the request if DB save fails
     }
 
     const allExports = exportPrompts;
@@ -527,16 +543,11 @@ Deno.serve(async (req: Request) => {
       }
     );
   } catch (error) {
-    console.error('Prompt generation failed:', error);
-    return new Response(
-      JSON.stringify({
-        error: 'Prompt generation failed',
-        details: error.message || 'Unknown error occurred',
-      }),
-      {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      }
+    const errorMessage = sanitizeError(error, 'An error occurred while processing your request');
+    return createErrorResponse(
+      errorMessage,
+      500,
+      corsHeaders
     );
   }
 });

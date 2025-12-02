@@ -5,6 +5,7 @@ import { ArrowRight, Github } from "lucide-react";
 import { useState, useEffect, useMemo } from "react";
 import { Button } from "./button";
 import { cn } from "../../lib/utils/cn";
+import { trackEvent, AnalyticsEvents } from "../../lib/analytics";
 
 export function Hero() {
   const titles = useMemo(
@@ -56,13 +57,29 @@ export function Hero() {
           </div>
 
           <div className="flex flex-col sm:flex-row gap-4 items-center justify-center pt-4">
-            <Button size="lg" className="group">
+            <Button 
+              size="lg" 
+              className="group"
+              onClick={() => trackEvent({ name: AnalyticsEvents.GET_STARTED_CLICKED })}
+            >
               Get Started
               <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
             </Button>
-            <Button size="lg" variant="outline">
-              <Github className="mr-2 h-4 w-4" />
-              View on GitHub
+            <Button 
+              size="lg" 
+              variant="outline"
+              asChild
+            >
+              <a
+                href="https://github.com/Blitty9/SMPL-2"
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="View SMPL on GitHub (opens in new tab)"
+                onClick={() => trackEvent({ name: AnalyticsEvents.GITHUB_CLICKED })}
+              >
+                <Github className="mr-2 h-4 w-4" />
+                View on GitHub
+              </a>
             </Button>
           </div>
         </div>
