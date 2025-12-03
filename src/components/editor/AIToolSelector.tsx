@@ -84,12 +84,12 @@ export default function AIToolSelector({ value, onChange }: AIToolSelectorProps)
   const SelectedIcon = selectedTool?.icon || Code;
 
   return (
-    <div className="flex items-center gap-3">
-      <label className="text-sm text-[#A0A0A0] whitespace-nowrap">AI Target:</label>
+    <div className="flex items-center gap-2 sm:gap-3">
+      <label className="text-xs sm:text-sm text-[#A0A0A0] whitespace-nowrap">AI Target:</label>
       <Select value={value} onValueChange={(val) => onChange(val as AITool)}>
-        <SelectTrigger className="w-[200px]">
+        <SelectTrigger className="w-full sm:w-[180px] lg:w-[200px]">
           <div className="flex items-center gap-2">
-            <SelectedIcon className="w-4 h-4 text-[#6D5AE0]" />
+            <SelectedIcon className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#6D5AE0]" />
             <SelectValue placeholder="Select AI tool">
               {selectedTool?.label}
             </SelectValue>

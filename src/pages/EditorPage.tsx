@@ -566,7 +566,7 @@ export default function EditorPage() {
     <div className="min-h-screen bg-[#0C0D10] text-[#ECECEC]">
       <div className="flex flex-col lg:flex-row lg:h-screen">
         {/* Input Panel - Full width on mobile, 45% on desktop */}
-        <div className="w-full lg:w-[45%] border-b lg:border-b-0 lg:border-r border-[#2F333A] flex flex-col max-h-[50vh] lg:max-h-none">
+        <div className="w-full lg:w-[45%] border-b lg:border-b-0 lg:border-r border-[#2F333A] flex flex-col overflow-y-auto lg:max-h-none">
           <IdeaInput
             value={ideaInput}
             onChange={setIdeaInput}
@@ -599,20 +599,20 @@ export default function EditorPage() {
                 {user && (
                   <button
                     onClick={() => setIsHistoryOpen(true)}
-                    className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md bg-[#111215] border border-[#2F333A] text-[#ECECEC] hover:border-[#6D5AE0] hover:bg-[#6D5AE0]/10 transition-colors duration-200"
+                    className="flex items-center gap-1.5 lg:gap-2 px-2 lg:px-4 py-1.5 lg:py-2 text-xs lg:text-sm font-medium rounded-md bg-[#111215] border border-[#2F333A] text-[#ECECEC] hover:border-[#6D5AE0] hover:bg-[#6D5AE0]/10 transition-colors duration-200"
                     title="View History"
                   >
-                    <History className="w-4 h-4" />
-                    <span>History</span>
+                    <History className="w-3.5 h-3.5 lg:w-4 lg:h-4" />
+                    <span className="hidden sm:inline">History</span>
                   </button>
                 )}
                 <button
                   onClick={() => navigate('/')}
-                  className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md bg-[#111215] border border-[#2F333A] text-[#ECECEC] hover:border-[#6D5AE0] hover:bg-[#6D5AE0]/10 transition-colors duration-200"
+                  className="flex items-center gap-1.5 lg:gap-2 px-2 lg:px-4 py-1.5 lg:py-2 text-xs lg:text-sm font-medium rounded-md bg-[#111215] border border-[#2F333A] text-[#ECECEC] hover:border-[#6D5AE0] hover:bg-[#6D5AE0]/10 transition-colors duration-200"
                   title="Back to Homepage"
                 >
-                  <Home className="w-4 h-4" />
-                  <span>Home</span>
+                  <Home className="w-3.5 h-3.5 lg:w-4 lg:h-4" />
+                  <span className="hidden sm:inline">Home</span>
                 </button>
                 {results && (
                   <div className="flex gap-2">
@@ -646,7 +646,7 @@ export default function EditorPage() {
             </div>
           </div>
 
-          <div className="flex-1 px-8 pb-8 overflow-hidden flex flex-col">
+          <div className="flex-1 px-4 lg:px-8 pb-4 lg:pb-8 overflow-hidden flex flex-col min-h-0">
             {isGenerating && generationProgress !== undefined && (
               <ProgressIndicator 
                 progress={generationProgress} 
