@@ -27,12 +27,12 @@ export default function Tabs({ activeTab, onTabChange, mode }: TabsProps) {
   const tabs = mode === 'app' ? appTabs : promptTabs;
 
   return (
-    <div className="flex space-x-8 border-b border-[#2F333A] overflow-x-auto">
+    <div className="flex space-x-4 sm:space-x-6 lg:space-x-8 border-b border-[#2F333A] overflow-x-auto scrollbar-hide">
       {tabs.map((tab) => (
         <button
           key={tab.id}
           onClick={() => onTabChange(tab.id)}
-          className={`pb-3 font-mono text-sm transition-colors relative whitespace-nowrap ${
+          className={`pb-2 sm:pb-3 font-mono text-xs sm:text-sm transition-colors relative whitespace-nowrap ${
             activeTab === tab.id
               ? 'text-[#ECECEC]'
               : 'text-[#A0A0A0] hover:text-[#ECECEC]'

@@ -22,21 +22,21 @@ export default function TokenStats({
   ];
 
   return (
-    <div className="p-8 pt-0">
-      <div className="space-y-3">
+    <div className="p-4 lg:p-8 pt-0">
+      <div className="space-y-2 sm:space-y-3">
         {stats.map((stat) => (
           <div
             key={stat.label}
-            className="bg-[#111215] border border-[#2F333A] border-l-2 border-l-[#6D5AE0] rounded p-3"
+            className="bg-[#111215] border border-[#2F333A] border-l-2 border-l-[#6D5AE0] rounded p-2 sm:p-3"
           >
-            <div className="flex justify-between items-center">
-              <span className="text-[#A0A0A0] text-xs font-mono">{stat.label}</span>
-              <div className="flex items-center gap-2">
-                <span className="text-[#ECECEC] text-sm font-mono font-medium">
-                  {stat.value.toLocaleString()} tokens
+            <div className="flex justify-between items-center gap-2">
+              <span className="text-[#A0A0A0] text-xs font-mono truncate">{stat.label}</span>
+              <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
+                <span className="text-[#ECECEC] text-xs sm:text-sm font-mono font-medium">
+                  {stat.value.toLocaleString()}
                 </span>
                 {stat.isExact !== undefined && (
-                  <span className={`text-xs px-1.5 py-0.5 rounded ${
+                  <span className={`text-[10px] sm:text-xs px-1 sm:px-1.5 py-0.5 rounded ${
                     stat.isExact 
                       ? 'bg-green-500/20 text-green-400 border border-green-500/30' 
                       : 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'

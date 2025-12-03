@@ -19,9 +19,9 @@ export default function IdeaInput({ value, onChange, onGenerate, isGenerating, m
   const heading = mode === 'app' ? 'Describe your app' : 'Describe your prompt';
 
   return (
-    <div className="flex flex-col h-full p-8">
-      <div className="mb-6">
-        <h2 className="text-xl font-medium text-[#ECECEC] mb-2">
+    <div className="flex flex-col h-full p-4 lg:p-8 overflow-hidden">
+      <div className="mb-4 lg:mb-6">
+        <h2 className="text-lg lg:text-xl font-medium text-[#ECECEC] mb-2">
           {heading}
         </h2>
         <div className="h-0.5 w-16 bg-[#6D5AE0]" />
@@ -33,15 +33,15 @@ export default function IdeaInput({ value, onChange, onGenerate, isGenerating, m
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="flex-1 w-full bg-[#111215] border border-[#2F333A] rounded-md p-4 text-[#ECECEC] font-mono text-sm resize-none focus:outline-none focus:border-[#6D5AE0] transition-colors"
+        className="flex-1 w-full bg-[#111215] border border-[#2F333A] rounded-md p-4 text-[#ECECEC] font-mono text-xs lg:text-sm resize-none focus:outline-none focus:border-[#6D5AE0] transition-colors min-h-[120px]"
         style={{ fontFamily: 'JetBrains Mono, monospace' }}
       />
 
-      <div className="mt-6 flex gap-3">
+      <div className="mt-4 lg:mt-6 flex gap-3">
         <button
           onClick={onGenerate}
           disabled={!value.trim() || isGenerating}
-          className="flex-1 bg-[#6D5AE0] text-white font-medium py-3 px-6 rounded-md hover:bg-[#7a68e6] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="flex-1 bg-[#6D5AE0] text-white font-medium py-2.5 lg:py-3 px-4 lg:px-6 rounded-md hover:bg-[#7a68e6] transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm lg:text-base"
         >
           {isGenerating ? 'Generating...' : mode === 'app' ? 'Generate Schema' : 'Generate Prompt'}
         </button>

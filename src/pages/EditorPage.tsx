@@ -564,8 +564,9 @@ export default function EditorPage() {
 
   return (
     <div className="min-h-screen bg-[#0C0D10] text-[#ECECEC]">
-      <div className="flex h-screen">
-        <div className="w-[45%] border-r border-[#2F333A] flex flex-col">
+      <div className="flex flex-col lg:flex-row lg:h-screen">
+        {/* Input Panel - Full width on mobile, 45% on desktop */}
+        <div className="w-full lg:w-[45%] border-b lg:border-b-0 lg:border-r border-[#2F333A] flex flex-col max-h-[50vh] lg:max-h-none">
           <IdeaInput
             value={ideaInput}
             onChange={setIdeaInput}
@@ -589,11 +590,12 @@ export default function EditorPage() {
           )}
         </div>
 
-        <div className="w-[55%] flex flex-col overflow-hidden">
-          <div className="p-8">
-            <div className="flex items-center justify-between mb-4">
+        {/* Output Panel - Full width on mobile, 55% on desktop */}
+        <div className="w-full lg:w-[55%] flex flex-col overflow-hidden flex-1">
+          <div className="p-4 lg:p-8">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
               <Tabs activeTab={activeTab} onTabChange={setActiveTab} mode={mode} />
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 {user && (
                   <button
                     onClick={() => setIsHistoryOpen(true)}
@@ -627,14 +629,14 @@ export default function EditorPage() {
                     <button
                       onClick={handleShrink}
                       disabled={isShrinking || !results.dsl}
-                      className="px-4 py-2 text-sm font-medium rounded-md bg-[#111215] border border-[#2F333A] text-[#ECECEC] hover:border-[#6D5AE0] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="px-2 lg:px-4 py-1.5 lg:py-2 text-xs lg:text-sm font-medium rounded-md bg-[#111215] border border-[#2F333A] text-[#ECECEC] hover:border-[#6D5AE0] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {isShrinking ? 'Shrinking...' : 'Shrink'}
                     </button>
                     <button
                       onClick={handleExpand}
                       disabled={isExpanding || !results.dsl}
-                      className="px-4 py-2 text-sm font-medium rounded-md bg-[#111215] border border-[#2F333A] text-[#ECECEC] hover:border-[#6D5AE0] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="px-2 lg:px-4 py-1.5 lg:py-2 text-xs lg:text-sm font-medium rounded-md bg-[#111215] border border-[#2F333A] text-[#ECECEC] hover:border-[#6D5AE0] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {isExpanding ? 'Expanding...' : 'Expand'}
                     </button>
