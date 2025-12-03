@@ -214,7 +214,7 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const validTools = ['cursor', 'bolt', 'v0', 'claude', 'replit'];
+    const validTools = ['cursor', 'bolt', 'v0', 'claude', 'replit', 'createanything', 'lovable'];
     if (!validTools.includes(tool)) {
       return new Response(
         JSON.stringify({

@@ -63,6 +63,66 @@ OUTPUT FORMAT (MUST MATCH EXACTLY):
   "context": string (optional background)
 }
 
+EXAMPLES:
+
+Example 1:
+Input: "Create a responsive dashboard with real-time data visualization. The dashboard should display user analytics, include filterable charts, and support dark mode."
+
+Output:
+{
+  "task": "Build responsive dashboard with real-time analytics",
+  "intent": "Create an interactive data visualization interface for monitoring user metrics",
+  "entities": [
+    { "name": "dashboard", "type": "component", "description": "Main container for analytics display" },
+    { "name": "user analytics", "type": "data", "description": "User metrics and statistics" },
+    { "name": "charts", "type": "component", "description": "Visual data representations" },
+    { "name": "dark mode", "type": "feature", "description": "Theme switching capability" }
+  ],
+  "steps": [
+    "Set up responsive layout structure",
+    "Integrate real-time data fetching",
+    "Create filterable chart components",
+    "Implement dark mode theme toggle",
+    "Add responsive breakpoints for mobile/tablet/desktop"
+  ],
+  "constraints": [
+    "Must be responsive across all device sizes",
+    "Real-time updates required",
+    "Charts must be filterable",
+    "Dark mode support mandatory"
+  ],
+  "context": "Dashboard for displaying user analytics with interactive visualizations"
+}
+
+Example 2:
+Input: "Make a login page with email and password fields, remember me checkbox, and forgot password link"
+
+Output:
+{
+  "task": "Create authentication login page",
+  "intent": "Build a secure user login interface with standard authentication features",
+  "entities": [
+    { "name": "login page", "type": "component", "description": "Authentication interface" },
+    { "name": "email field", "type": "component", "description": "Email input for user identification" },
+    { "name": "password field", "type": "component", "description": "Secure password input" },
+    { "name": "remember me", "type": "feature", "description": "Session persistence option" },
+    { "name": "forgot password", "type": "feature", "description": "Password recovery link" }
+  ],
+  "steps": [
+    "Create form with email and password inputs",
+    "Add remember me checkbox",
+    "Include forgot password link",
+    "Implement form validation",
+    "Add submit button with loading state"
+  ],
+  "constraints": [
+    "Email format validation required",
+    "Password must be secure input type",
+    "Form must handle errors gracefully"
+  ],
+  "context": "Standard authentication login interface"
+}
+
 Always produce a complete, valid, strict JSON object.`;
 
 function formatPromptCompact(schema: PromptSchema): string {
@@ -375,7 +435,65 @@ ${constraintsList}
 - Document complex logic
 - Optimize for maintainability
 
-Build a complete, well-architected implementation following these comprehensive guidelines.`
+Build a complete, well-architected implementation following these comprehensive guidelines.`,
+
+    createanything: `# Create Anything - Build Request
+
+## What to Build
+${schema.task}
+
+## Specification
+\`\`\`json
+${jsonPrompt}
+\`\`\`
+
+## Steps
+${stepsList}
+
+## Key Elements
+${entitiesList}
+
+## Requirements
+${constraintsList}
+
+## Build Instructions
+Create a working application or site with:
+- Modern design
+- Clean code structure
+- Responsive layout
+- Smooth user experience
+- Production-ready quality
+
+Turn this into a complete, functional product.`,
+
+    lovable: `# Lovable - App Build Request
+
+## Build This
+${schema.task}
+
+## Full Specification
+\`\`\`json
+${jsonPrompt}
+\`\`\`
+
+## Implementation Steps
+${stepsList}
+
+## Data & Entities
+${entitiesList}
+
+## Constraints & Requirements
+${constraintsList}
+
+## Deliverables
+Build a complete, functional application with:
+- Beautiful, modern UI
+- Intuitive user experience
+- Responsive design
+- Clean architecture
+- Production-ready code
+
+Generate the full application code.`,
   };
 }
 

@@ -1,14 +1,27 @@
 import { supabase } from './supabase';
+import type { AppSchema } from './utils/schema';
+
+export interface ExportPrompts {
+  cursor?: string;
+  bolt?: string;
+  v0?: string;
+  replit?: string;
+  vibeCode?: string;
+  generic?: string;
+  createanything?: string;
+  lovable?: string;
+  [key: string]: string | undefined;
+}
 
 export interface PromptHistoryItem {
   id: string;
   input_text: string;
   input_type: string;
   mode: string;
-  json_schema: any;
+  json_schema: AppSchema | Record<string, unknown>;
   smpl_dsl: string;
   expanded_spec: string;
-  export_prompts: any;
+  export_prompts: ExportPrompts;
   created_at: string;
   updated_at: string;
   user_id: string | null;

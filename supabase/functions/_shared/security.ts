@@ -10,7 +10,14 @@ const RATE_LIMIT_WINDOW_MS = 60000; // 1 minute window
 const getAllowedOrigins = (): string[] => {
   const envOrigins = Deno.env.get('ALLOWED_ORIGINS');
   if (envOrigins) {
-    return envOrigins.split(',').map(o => o.trim());
+    // Parse and normalize environment variable origins
+    const parsed = envOrigins.split(',').map(o => o.trim()).filter(o => o);
+    // Always include localhost for development (unless explicitly disabled)
+    const hasLocalhost = parsed.some(o => o.includes('localhost'));
+    if (!hasLocalhost) {
+      parsed.unshift('http://localhost:5173', 'http://localhost:3000');
+    }
+    return parsed;
   }
   // Default: allow common development and production origins
   return [
@@ -21,14 +28,28 @@ const getAllowedOrigins = (): string[] => {
   ];
 };
 
+// Normalize origin by removing trailing slash
+function normalizeOrigin(origin: string): string {
+  return origin.replace(/\/$/, '');
+}
+
 // Get CORS headers based on request origin
 export function getCorsHeaders(req: Request): Record<string, string> {
   const allowedOrigins = getAllowedOrigins();
   const origin = req.headers.get('origin');
   
-  const corsOrigin = origin && allowedOrigins.includes(origin) 
+  // Normalize origins for comparison (remove trailing slashes)
+  const normalizedAllowedOrigins = allowedOrigins.map(normalizeOrigin);
+  const normalizedOrigin = origin ? normalizeOrigin(origin) : null;
+  
+  // Check if origin is allowed (case-insensitive, normalized)
+  const isAllowed = normalizedOrigin && normalizedAllowedOrigins.some(
+    allowed => allowed.toLowerCase() === normalizedOrigin.toLowerCase()
+  );
+  
+  const corsOrigin = isAllowed && origin
     ? origin 
-    : allowedOrigins[0] || '*';
+    : (normalizedAllowedOrigins[0] || '*');
   
   return {
     "Access-Control-Allow-Origin": corsOrigin,

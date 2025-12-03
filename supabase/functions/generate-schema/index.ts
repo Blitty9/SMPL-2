@@ -93,7 +93,7 @@ Respond with a JSON object containing these three keys: jsonSchema (as a JSON ob
           { role: 'user', content: text },
         ],
         response_format: { type: 'json_object' },
-        temperature: 0.7,
+        temperature: 0.3,
       }),
     });
 

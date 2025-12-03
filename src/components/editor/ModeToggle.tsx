@@ -2,7 +2,7 @@ import { cn } from '../../lib/utils/cn';
 import AIToolSelector from './AIToolSelector';
 
 export type EditorMode = 'app' | 'prompt';
-export type AITool = 'cursor' | 'claude' | 'bolt' | 'v0' | 'replit' | 'openai' | 'anthropic';
+export type AITool = 'cursor' | 'claude' | 'bolt' | 'v0' | 'replit' | 'openai' | 'anthropic' | 'createanything' | 'lovable';
 
 interface ModeToggleProps {
   mode: EditorMode;

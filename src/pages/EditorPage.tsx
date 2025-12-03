@@ -6,11 +6,14 @@ import Tabs from '../components/editor/Tabs';
 import CodeOutput from '../components/editor/CodeOutput';
 import TokenStats from '../components/editor/TokenStats';
 import HistoryPanel from '../components/editor/HistoryPanel';
+import { LoadingSkeleton, ProgressIndicator } from '../components/ui/loading-skeleton';
 import { generateExports } from '../lib/schema/generateExports';
 import { formatExpanded } from '../lib/schema/formatExpanded';
 import { countTokens, countInputTokens } from '../lib/utils/tokenCounter';
 import { trackEvent, AnalyticsEvents } from '../lib/analytics';
 import { useAuth } from '../contexts/AuthContext';
+import { useToastContext } from '../contexts/ToastContext';
+import { useDebouncedLocalStorage, useLocalStorage } from '../hooks/useLocalStorage';
 import { supabase } from '../lib/supabase';
 import type { AppSchema } from '../lib/utils/schema';
 import type { Example } from '../data/examples';
@@ -23,8 +26,10 @@ export default function EditorPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const toast = useToastContext();
   const [ideaInput, setIdeaInput] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
+  const [generationProgress, setGenerationProgress] = useState<number | undefined>(undefined);
   const [mode, setMode] = useState<EditorMode>('app');
   const [aiTool, setAiTool] = useState<AITool>('cursor');
   const [activeTab, setActiveTab] = useState<TabType>('json');
@@ -76,9 +81,9 @@ export default function EditorPage() {
   // Helper functions to set results based on current mode
   const setResults = (value: typeof appResults | ((prev: typeof appResults) => typeof appResults)) => {
     if (mode === 'app') {
-      setAppResults(value as any);
+      setAppResults(value as typeof appResults | ((prev: typeof appResults) => typeof appResults));
     } else {
-      setPromptResults(value as any);
+      setPromptResults(value as typeof promptResults | ((prev: typeof promptResults) => typeof promptResults));
     }
   };
   
@@ -161,81 +166,24 @@ export default function EditorPage() {
     }
   }, [location]);
 
-  // Save app results to localStorage whenever they change
-  useEffect(() => {
-    if (appResults) {
-      localStorage.setItem('smpl_app_results', JSON.stringify(appResults));
-    } else {
-      localStorage.removeItem('smpl_app_results');
-    }
-  }, [appResults]);
+  // Debounced localStorage saves for large/complex data
+  useDebouncedLocalStorage('smpl_app_results', appResults);
+  useDebouncedLocalStorage('smpl_prompt_results', promptResults);
+  useDebouncedLocalStorage('smpl_app_original_dsl', appOriginalDsl);
+  useDebouncedLocalStorage('smpl_prompt_original_dsl', promptOriginalDsl);
+  useDebouncedLocalStorage('smpl_app_token_counts', appTokenCounts);
+  useDebouncedLocalStorage('smpl_prompt_token_counts', promptTokenCounts);
+  useDebouncedLocalStorage('smpl_idea_input', ideaInput);
 
-  // Save prompt results to localStorage whenever they change
-  useEffect(() => {
-    if (promptResults) {
-      localStorage.setItem('smpl_prompt_results', JSON.stringify(promptResults));
-    } else {
-      localStorage.removeItem('smpl_prompt_results');
-    }
-  }, [promptResults]);
-
-  // Save original DSL to localStorage
-  useEffect(() => {
-    if (appOriginalDsl) {
-      localStorage.setItem('smpl_app_original_dsl', appOriginalDsl);
-    } else {
-      localStorage.removeItem('smpl_app_original_dsl');
-    }
-  }, [appOriginalDsl]);
-
-  useEffect(() => {
-    if (promptOriginalDsl) {
-      localStorage.setItem('smpl_prompt_original_dsl', promptOriginalDsl);
-    } else {
-      localStorage.removeItem('smpl_prompt_original_dsl');
-    }
-  }, [promptOriginalDsl]);
-
-  // Save token counts to localStorage
-  useEffect(() => {
-    if (appTokenCounts) {
-      localStorage.setItem('smpl_app_token_counts', JSON.stringify(appTokenCounts));
-    } else {
-      localStorage.removeItem('smpl_app_token_counts');
-    }
-  }, [appTokenCounts]);
-
-  useEffect(() => {
-    if (promptTokenCounts) {
-      localStorage.setItem('smpl_prompt_token_counts', JSON.stringify(promptTokenCounts));
-    } else {
-      localStorage.removeItem('smpl_prompt_token_counts');
-    }
-  }, [promptTokenCounts]);
-
-  // Save input text to localStorage
-  useEffect(() => {
-    if (ideaInput) {
-      localStorage.setItem('smpl_idea_input', ideaInput);
-    } else {
-      localStorage.removeItem('smpl_idea_input');
-    }
-  }, [ideaInput]);
-
-  // Save mode to localStorage
-  useEffect(() => {
-    localStorage.setItem('smpl_mode', mode);
-  }, [mode]);
-
-  // Save AI tool to localStorage
-  useEffect(() => {
-    localStorage.setItem('smpl_ai_tool', aiTool);
-  }, [aiTool]);
+  // Immediate localStorage saves for simple values
+  useLocalStorage('smpl_mode', mode);
+  useLocalStorage('smpl_ai_tool', aiTool);
 
   const handleGenerate = async () => {
     if (!ideaInput.trim()) return;
 
     setIsGenerating(true);
+    setGenerationProgress(10);
     trackEvent({ name: AnalyticsEvents.EDITOR_OPENED });
 
     try {
@@ -246,6 +194,8 @@ export default function EditorPage() {
       const { data: { session } } = await supabase.auth.getSession();
       const authToken = session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY;
 
+      setGenerationProgress(30);
+      
       const response = await fetch(generateUrl, {
         method: 'POST',
         headers: {
@@ -255,6 +205,8 @@ export default function EditorPage() {
         },
         body: JSON.stringify({ text: ideaInput, tool: aiTool }),
       });
+
+      setGenerationProgress(60);
 
       if (!response.ok) {
         const error = await response.json();
@@ -270,20 +222,12 @@ export default function EditorPage() {
         const tokenStats = data.tokenStats || {};
         const exportPrompts = data.exportPrompts || {};
 
-        // Sort entries to put the selected tool first
-        const sortedEntries = Object.entries(exportPrompts).sort(([toolA], [toolB]) => {
-          if (toolA === aiTool) return -1;
-          if (toolB === aiTool) return 1;
-          return 0;
-        });
-
-        const allExports = sortedEntries
-          .map(([tool, prompt]) => {
-            const toolName = tool.toUpperCase().replace(/([A-Z])/g, ' $1').trim();
-            const isBest = tool === aiTool;
-            return `${isBest ? '⭐ ' : ''}=== ${toolName} EXPORT PROMPT ===${isBest ? ' (SELECTED TOOL)' : ''}\n\n${prompt}`;
-          })
-          .join('\n\n---\n\n');
+      // Only show the export prompt for the selected tool
+      const selectedExport = exportPrompts[aiTool] || exportPrompts.cursor || '';
+      const toolName = aiTool.toUpperCase().replace(/([A-Z])/g, ' $1').trim();
+      const allExports = selectedExport 
+        ? `=== ${toolName} EXPORT PROMPT ===\n\n${selectedExport}`
+        : 'No export prompt available for the selected tool.';
 
         // Store original DSL for refresh functionality
         setOriginalDsl(smplCompact);
@@ -333,20 +277,12 @@ export default function EditorPage() {
       const expandedSpec = data.expandedSpec || '';
       const exportPrompts = data.exportPrompts || {};
 
-      // Sort entries to put the selected tool first
-      const sortedEntries = Object.entries(exportPrompts).sort(([toolA], [toolB]) => {
-        if (toolA === aiTool) return -1;
-        if (toolB === aiTool) return 1;
-        return 0;
-      });
-
-      const allExports = sortedEntries
-        .map(([tool, prompt]) => {
-          const toolName = tool.toUpperCase().replace(/([A-Z])/g, ' $1').trim();
-          const isBest = tool === aiTool;
-          return `${isBest ? '⭐ ' : ''}=== ${toolName} EXPORT PROMPT ===${isBest ? ' (SELECTED TOOL)' : ''}\n\n${prompt}`;
-        })
-        .join('\n\n---\n\n');
+      // Only show the export prompt for the selected tool
+      const selectedExport = exportPrompts[aiTool] || exportPrompts.cursor || '';
+      const toolName = aiTool.toUpperCase().replace(/([A-Z])/g, ' $1').trim();
+      const allExports = selectedExport 
+        ? `=== ${toolName} EXPORT PROMPT ===\n\n${selectedExport}`
+        : 'No export prompt available for the selected tool.';
 
       const analysis = undefined;
 
@@ -394,6 +330,7 @@ export default function EditorPage() {
       });
     } finally {
       setIsGenerating(false);
+      setGenerationProgress(undefined);
     }
   };
 
@@ -438,7 +375,7 @@ export default function EditorPage() {
       }
     } catch (error) {
       console.error('Shrink failed:', error);
-      alert(`Shrink failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      toast.error(`Shrink failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsShrinking(false);
     }
@@ -475,7 +412,7 @@ export default function EditorPage() {
       }
     } catch (error) {
       console.error('Expand failed:', error);
-      alert(`Expand failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      toast.error(`Expand failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsExpanding(false);
     }
@@ -514,23 +451,47 @@ export default function EditorPage() {
     
     // Load the results
     if (item.mode === 'app') {
-      const jsonSchema = typeof item.json_schema === 'string' 
-        ? JSON.parse(item.json_schema) 
-        : item.json_schema;
+      // Use the tool from the item if available, otherwise use current aiTool
+      const toolToUse = item.tool || aiTool;
       
-      const exports = generateExports(jsonSchema as AppSchema, item.smpl_dsl, aiTool);
-      const expanded = formatExpanded(jsonSchema as AppSchema);
+      // Use stored export prompts from database
+      const exportPrompts = item.export_prompts || {};
+      const selectedExport = exportPrompts[toolToUse] || exportPrompts.cursor || '';
+      
+      let allExports: string;
+      if (selectedExport) {
+        const toolName = toolToUse.toUpperCase().replace(/([A-Z])/g, ' $1').trim();
+        allExports = `=== ${toolName} EXPORT PROMPT ===\n\n${selectedExport}`;
+      } else {
+        // Fallback: generate if not stored (for older records)
+        const jsonSchema = typeof item.json_schema === 'string' 
+          ? JSON.parse(item.json_schema) 
+          : item.json_schema;
+        allExports = generateExports(jsonSchema as AppSchema, item.smpl_dsl, toolToUse);
+      }
+      
+      // Use stored expanded spec from database, or generate if not available
+      let expanded: string;
+      if (item.expanded_spec) {
+        expanded = item.expanded_spec;
+      } else {
+        // Fallback: generate if not stored (for older records)
+        const jsonSchema = typeof item.json_schema === 'string' 
+          ? JSON.parse(item.json_schema) 
+          : item.json_schema;
+        expanded = formatExpanded(jsonSchema as AppSchema);
+      }
       
       // Calculate token counts
-      const inputTokenResult = countInputTokens(item.input_text, aiTool);
-      const jsonTokenResult = countTokens(JSON.stringify(item.json_schema, null, 2), aiTool);
-      const smplTokenResult = countTokens(item.smpl_dsl, aiTool);
+      const inputTokenResult = countInputTokens(item.input_text, toolToUse);
+      const jsonTokenResult = countTokens(JSON.stringify(item.json_schema, null, 2), toolToUse);
+      const smplTokenResult = countTokens(item.smpl_dsl, toolToUse);
       
       setAppResults({
         json: JSON.stringify(item.json_schema, null, 2),
         dsl: item.smpl_dsl,
         expanded: expanded,
-        exports: exports,
+        exports: allExports,
       });
       
       setAppOriginalDsl(item.smpl_dsl);
@@ -542,6 +503,9 @@ export default function EditorPage() {
         jsonExact: jsonTokenResult.isExact,
         smplExact: smplTokenResult.isExact,
       });
+      
+      // Switch to JSON tab to show the loaded content
+      setActiveTab('json');
     } else {
       // Prompt mode
       const jsonPrompt = typeof item.json_schema === 'string'
@@ -549,23 +513,18 @@ export default function EditorPage() {
         : JSON.stringify(item.json_schema, null, 2);
       
       const exportPrompts = item.export_prompts || {};
-      const sortedEntries = Object.entries(exportPrompts).sort(([toolA], [toolB]) => {
-        if (toolA === aiTool) return -1;
-        if (toolB === aiTool) return 1;
-        return 0;
-      });
+      // Use the tool from the item if available, otherwise use current aiTool
+      const toolToUse = item.tool || aiTool;
+      // Only show the export prompt for the selected tool
+      const selectedExport = exportPrompts[toolToUse] || exportPrompts.cursor || '';
+      const toolName = toolToUse.toUpperCase().replace(/([A-Z])/g, ' $1').trim();
+      const allExports = selectedExport 
+        ? `=== ${toolName} EXPORT PROMPT ===\n\n${selectedExport}`
+        : 'No export prompt available for the selected tool.';
       
-      const allExports = sortedEntries
-        .map(([tool, prompt]) => {
-          const toolName = tool.toUpperCase().replace(/([A-Z])/g, ' $1').trim();
-          const isBest = tool === aiTool;
-          return `${isBest ? '⭐ ' : ''}=== ${toolName} EXPORT PROMPT ===${isBest ? ' (SELECTED TOOL)' : ''}\n\n${prompt}`;
-        })
-        .join('\n\n---\n\n');
-      
-      const inputTokenResult = countInputTokens(item.input_text, aiTool);
-      const jsonTokenResult = countTokens(jsonPrompt, aiTool);
-      const smplTokenResult = countTokens(item.smpl_dsl, aiTool);
+      const inputTokenResult = countInputTokens(item.input_text, toolToUse);
+      const jsonTokenResult = countTokens(jsonPrompt, toolToUse);
+      const smplTokenResult = countTokens(item.smpl_dsl, toolToUse);
       
       const savings = inputTokenResult.count - smplTokenResult.count;
       const savingsPercent = inputTokenResult.count > 0 
@@ -591,10 +550,10 @@ export default function EditorPage() {
         jsonExact: jsonTokenResult.isExact,
         smplExact: smplTokenResult.isExact,
       });
+      
+      // Switch to JSON tab to show the loaded content
+      setActiveTab('json');
     }
-    
-    // Switch to JSON tab to show the loaded content
-    setActiveTab('json');
   };
 
   useEffect(() => {
@@ -685,11 +644,25 @@ export default function EditorPage() {
             </div>
           </div>
 
-          <div className="flex-1 px-8 pb-8 overflow-hidden">
-            <CodeOutput
-              content={results ? (results[activeTab] || '') : ''}
-              hasContent={!!results}
-            />
+          <div className="flex-1 px-8 pb-8 overflow-hidden flex flex-col">
+            {isGenerating && generationProgress !== undefined && (
+              <ProgressIndicator 
+                progress={generationProgress} 
+                message={mode === 'app' ? 'Generating schema...' : 'Generating prompt...'}
+              />
+            )}
+            <div className="flex-1 overflow-hidden">
+              {isGenerating ? (
+                <LoadingSkeleton 
+                  type="code" 
+                />
+              ) : (
+                <CodeOutput
+                  content={results ? (results[activeTab] || '') : ''}
+                  hasContent={!!results}
+                />
+              )}
+            </div>
           </div>
         </div>
       </div>

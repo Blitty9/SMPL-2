@@ -117,7 +117,7 @@ Deno.serve(async (req: Request) => {
     // Sanitize input
     const sanitizedInput = sanitizeInput(input);
 
-    const validTools = ['cursor', 'claude', 'bolt', 'v0', 'replit', 'openai', 'anthropic'];
+    const validTools = ['cursor', 'claude', 'bolt', 'v0', 'replit', 'openai', 'anthropic', 'createanything', 'lovable'];
     if (!validTools.includes(tool)) {
       return createErrorResponse(
         'Invalid tool',

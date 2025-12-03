@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { Sparkles, MessageSquare, Zap, Box, Code, Brain, Cpu } from 'lucide-react';
+import { Sparkles, MessageSquare, Zap, Box, Code, Brain, Cpu, Smartphone, Rocket } from 'lucide-react';
 import * as SelectPrimitive from '@radix-ui/react-select';
 import type { AITool } from './ModeToggle';
 import {
@@ -64,6 +64,18 @@ const toolOptions: ToolOption[] = [
     label: 'Anthropic',
     description: 'Claude API access',
     icon: Cpu,
+  },
+  {
+    value: 'createanything',
+    label: 'Create Anything',
+    description: 'Turn words into mobile apps & sites',
+    icon: Smartphone,
+  },
+  {
+    value: 'lovable',
+    label: 'Lovable',
+    description: 'AI-powered app builder',
+    icon: Rocket,
   },
 ];
 

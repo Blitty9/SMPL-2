@@ -1,6 +1,8 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import LenisProvider from './components/providers/LenisProvider';
 import { AuthProvider } from './contexts/AuthContext';
+import { ToastProvider } from './contexts/ToastContext';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import LandingPage from './pages/LandingPage';
 import EditorPage from './pages/EditorPage';
 import ExamplesPage from './pages/ExamplesPage';
@@ -16,34 +18,40 @@ function AppContent() {
   useAnalytics(); // Track page views automatically
 
   return (
-    <Routes>
-      <Route path="/" element={
-        <LenisProvider>
-          <LandingPage />
-        </LenisProvider>
-      } />
-      <Route path="/product" element={
-        <LenisProvider>
-          <ProductPage />
-        </LenisProvider>
-      } />
-      <Route path="/editor" element={<EditorPage />} />
-      <Route path="/examples" element={<ExamplesPage />} />
-      <Route path="/privacy" element={
-        <LenisProvider>
-          <PrivacyPage />
-        </LenisProvider>
-      } />
-      <Route path="/terms" element={
-        <LenisProvider>
-          <TermsPage />
-        </LenisProvider>
-      } />
-      <Route path="/login" element={<LoginPage />} />
-      <Route path="/signup" element={<SignupPage />} />
-      <Route path="/thank-you" element={<ThankYouPage />} />
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+    <ErrorBoundary>
+      <Routes>
+        <Route path="/" element={
+          <LenisProvider>
+            <LandingPage />
+          </LenisProvider>
+        } />
+        <Route path="/product" element={
+          <LenisProvider>
+            <ProductPage />
+          </LenisProvider>
+        } />
+        <Route path="/editor" element={
+          <ErrorBoundary>
+            <EditorPage />
+          </ErrorBoundary>
+        } />
+        <Route path="/examples" element={<ExamplesPage />} />
+        <Route path="/privacy" element={
+          <LenisProvider>
+            <PrivacyPage />
+          </LenisProvider>
+        } />
+        <Route path="/terms" element={
+          <LenisProvider>
+            <TermsPage />
+          </LenisProvider>
+        } />
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/signup" element={<SignupPage />} />
+        <Route path="/thank-you" element={<ThankYouPage />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </ErrorBoundary>
   );
 }
 
@@ -51,7 +59,9 @@ function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <AppContent />
+        <ToastProvider>
+          <AppContent />
+        </ToastProvider>
       </AuthProvider>
     </BrowserRouter>
   );

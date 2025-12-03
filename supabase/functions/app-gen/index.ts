@@ -86,6 +86,109 @@ OUTPUT FORMAT (MUST MATCH EXACTLY):
   ]
 }
 
+EXAMPLES:
+
+Example 1:
+Input: "Build a todo app with the following features: Home page showing all tasks in a list, Add task form with title, description, category, and priority, Mark tasks as complete, Filter by category (Work, Personal, Shopping), Delete completed tasks"
+
+Output:
+{
+  "app_name": "TaskMaster",
+  "platform": "web",
+  "description": "A task management application for organizing daily todos",
+  "pages": [
+    {
+      "id": "home",
+      "type": "feed",
+      "title": "Home",
+      "components": ["header", "task-list", "add-task-form", "filter-bar"],
+      "auth_required": false
+    }
+  ],
+  "data_models": [
+    {
+      "name": "Task",
+      "fields": [
+        { "name": "id", "type": "string", "optional": false },
+        { "name": "title", "type": "string", "optional": false },
+        { "name": "description", "type": "string", "optional": true },
+        { "name": "category", "type": "string", "optional": false },
+        { "name": "priority", "type": "string", "optional": false },
+        { "name": "completed", "type": "boolean", "optional": false },
+        { "name": "created_at", "type": "timestamp", "optional": false }
+      ]
+    }
+  ],
+  "actions": [
+    {
+      "name": "CreateTask",
+      "trigger": "form.submit",
+      "steps": ["validate_input", "insert_record", "refresh_list"]
+    },
+    {
+      "name": "CompleteTask",
+      "trigger": "checkbox.click",
+      "steps": ["update_record", "show_notification"]
+    },
+    {
+      "name": "DeleteTask",
+      "trigger": "button.click",
+      "steps": ["confirm_dialog", "delete_record", "refresh_list"]
+    }
+  ]
+}
+
+Example 2:
+Input: "Create a journaling app where users can: Write daily journal entries with title and content, Track their mood (happy, neutral, sad, anxious), Add tags to entries (reflection, gratitude, goals), View a timeline of all entries, Search entries by tag or date"
+
+Output:
+{
+  "app_name": "DailyReflect",
+  "platform": "web",
+  "description": "A journaling app for tracking thoughts and moods",
+  "pages": [
+    {
+      "id": "timeline",
+      "type": "feed",
+      "title": "Timeline",
+      "components": ["header", "entry-list", "search-bar", "mood-filter"],
+      "auth_required": true
+    },
+    {
+      "id": "new-entry",
+      "type": "form",
+      "title": "New Entry",
+      "components": ["header", "entry-form", "mood-selector", "tag-selector"],
+      "auth_required": true
+    }
+  ],
+  "data_models": [
+    {
+      "name": "Entry",
+      "fields": [
+        { "name": "id", "type": "string", "optional": false },
+        { "name": "title", "type": "string", "optional": false },
+        { "name": "content", "type": "text", "optional": false },
+        { "name": "mood", "type": "string", "optional": false },
+        { "name": "tags", "type": "array", "optional": true },
+        { "name": "created_at", "type": "timestamp", "optional": false }
+      ]
+    }
+  ],
+  "actions": [
+    {
+      "name": "CreateEntry",
+      "trigger": "form.submit",
+      "steps": ["validate_input", "insert_record", "navigate.timeline"]
+    },
+    {
+      "name": "SearchEntries",
+      "trigger": "search.input",
+      "steps": ["filter_by_tag_or_date", "update_list"]
+    }
+  ]
+}
+
 If the input is incomplete, still infer structure.
 Always produce a complete, valid, strict JSON object.`;
 
@@ -532,7 +635,77 @@ Implement each action with proper state updates and user feedback.
 - Form validation with clear feedback
 - Responsive design patterns
 
-Build a comprehensive, well-architected application following software engineering best practices.`
+Build a comprehensive, well-architected application following software engineering best practices.`,
+
+    createanything: `# Create Anything - Mobile App & Site Builder
+
+${baseContext}
+
+## Application Specification
+\`\`\`json
+${jsonSchema}
+\`\`\`
+
+## SMPL DSL
+\`\`\`
+${smplDsl}
+\`\`\`
+
+## Build Instructions
+Turn this specification into a working ${schema.platform === 'web' ? 'web application' : schema.platform === 'mobile' ? 'mobile app' : 'application'}:
+
+### Pages & Screens
+${pagesList}
+
+### Data Structure
+${modelsList}
+
+### User Flows
+${actionsList}
+
+### Requirements
+- Modern, responsive design
+- Clean user interface
+- Smooth interactions
+- Proper data handling
+- Mobile-first approach (if applicable)
+
+Build this as a complete, functional application ready for deployment.`,
+
+    lovable: `# Lovable - AI-Powered App Builder
+
+${baseContext}
+
+## App Specification
+\`\`\`json
+${jsonSchema}
+\`\`\`
+
+## SMPL DSL
+\`\`\`
+${smplDsl}
+\`\`\`
+
+## Build This App
+Create a fully functional ${schema.platform} application with:
+
+### Screens/Pages
+${pagesList}
+
+### Data Models
+${modelsList}
+
+### Features & Actions
+${actionsList}
+
+### Design & UX
+- Modern, intuitive interface
+- Responsive layout
+- Smooth animations
+- Accessible components
+- Professional styling
+
+Generate complete, production-ready code for this application.`,
   };
 }
 
