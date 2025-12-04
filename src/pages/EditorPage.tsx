@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Home, RotateCcw, History } from 'lucide-react';
+import { Home, RotateCcw, History, Sparkles, MousePointer, Palette, Type, Zap, Layout } from 'lucide-react';
 import IdeaInput from '../components/editor/IdeaInput';
 import Tabs from '../components/editor/Tabs';
 import CodeOutput from '../components/editor/CodeOutput';
@@ -15,6 +15,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useToastContext } from '../contexts/ToastContext';
 import { useDebouncedLocalStorage, useLocalStorage } from '../hooks/useLocalStorage';
 import { supabase } from '../lib/supabase';
+import { createEnhancementCacheKey } from '../lib/utils/hash';
 import type { AppSchema } from '../lib/utils/schema';
 import type { Example } from '../data/examples';
 import type { EditorMode, AITool } from '../components/editor/ModeToggle';
@@ -54,6 +55,32 @@ export default function EditorPage() {
   
   const [isShrinking, setIsShrinking] = useState(false);
   const [isExpanding, setIsExpanding] = useState(false);
+  const [selectedEnhancements, setSelectedEnhancements] = useState<string[]>([]);
+  const [isEnhancing, setIsEnhancing] = useState(false);
+  
+  // Load enhancement cache from localStorage on mount
+  const [enhancementCache, setEnhancementCache] = useState<Map<string, string>>(() => {
+    try {
+      const cached = localStorage.getItem('enhancementCache');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        return new Map(Object.entries(parsed));
+      }
+    } catch (error) {
+      console.error('Failed to load enhancement cache:', error);
+    }
+    return new Map();
+  });
+
+  // Save cache to localStorage whenever it changes
+  useEffect(() => {
+    try {
+      const cacheObj = Object.fromEntries(enhancementCache);
+      localStorage.setItem('enhancementCache', JSON.stringify(cacheObj));
+    } catch (error) {
+      console.error('Failed to save enhancement cache:', error);
+    }
+  }, [enhancementCache]);
   // Store original DSL separately for each mode
   const [appOriginalDsl, setAppOriginalDsl] = useState<string | null>(null);
   const [promptOriginalDsl, setPromptOriginalDsl] = useState<string | null>(null);
@@ -418,6 +445,113 @@ export default function EditorPage() {
     }
   };
 
+  // Toggle enhancement selection
+  const toggleEnhancement = useCallback((enhancementType: string) => {
+    setSelectedEnhancements((prev) => {
+      if (prev.includes(enhancementType)) {
+        return prev.filter((e) => e !== enhancementType);
+      } else {
+        return [...prev, enhancementType];
+      }
+    });
+  }, []);
+
+  // Debounced generate function
+  const handleGenerateEnhancements = useCallback(
+    (() => {
+      let timeoutId: NodeJS.Timeout | null = null;
+      return () => {
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+        }
+        timeoutId = setTimeout(async () => {
+          if (selectedEnhancements.length === 0) {
+            toast.error('Please select at least one enhancement.');
+            return;
+          }
+
+          if (!ideaInput.trim() && !results?.json) {
+            toast.error('No content to enhance. Please generate a schema or prompt first.');
+            return;
+          }
+
+          setIsEnhancing(true);
+          try {
+            const enhanceUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/enhance-ui`;
+            
+            // Use the original input text if available, otherwise use the JSON schema
+            let promptToEnhance = ideaInput.trim() || (results?.json ? JSON.parse(results.json).description || results.json : '');
+
+            // Get auth token for authenticated users
+            const { data: { session } } = await supabase.auth.getSession();
+            const authToken = session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+            // Check cache first
+            const cacheKey = createEnhancementCacheKey(promptToEnhance, selectedEnhancements);
+            const cachedResult = enhancementCache.get(cacheKey);
+            
+            if (cachedResult) {
+              setIdeaInput(cachedResult);
+              toast.success(`Enhanced with ${selectedEnhancements.length} enhancement(s) (cached)! Regenerate to see the updated result.`);
+              setIsEnhancing(false);
+              return;
+            }
+
+            // Apply all enhancements in a single API call
+            const sortedEnhancements = [...selectedEnhancements].sort(); // Sort for consistent caching
+
+            // Call API with all enhancements at once
+            const response = await fetch(enhanceUrl, {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${authToken}`,
+                'apikey': `${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ 
+                prompt: promptToEnhance, 
+                enhancementTypes: sortedEnhancements,
+                mode 
+              }),
+            });
+
+            if (!response.ok) {
+              const errorData = await response.json().catch(() => ({ error: 'Failed to enhance UI' }));
+              throw new Error(errorData.error || errorData.details || 'Failed to enhance UI');
+            }
+
+            const data = await response.json();
+            if (!data.enhancedPrompt) {
+              throw new Error('No enhanced prompt returned');
+            }
+            
+            const enhancedPrompt = data.enhancedPrompt;
+
+            // Cache the final combined result
+            setEnhancementCache((prev) => {
+              const newCache = new Map(prev);
+              newCache.set(cacheKey, enhancedPrompt);
+              return newCache;
+            });
+
+            // Update the input with the enhanced prompt
+            setIdeaInput(enhancedPrompt);
+            toast.success(`Enhanced with ${selectedEnhancements.length} enhancement(s)! Regenerate to see the updated result.`);
+            
+            // Clear selections after successful enhancement
+            setSelectedEnhancements([]);
+          } catch (error) {
+            console.error('UI enhancement failed:', error);
+            toast.error(`Enhancement failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+          } finally {
+            setIsEnhancing(false);
+          }
+        }, 300); // 300ms debounce
+      };
+    })(),
+    [selectedEnhancements, ideaInput, results, mode, enhancementCache, toast]
+  );
+
   const handleRefreshDsl = () => {
     if (originalDsl && results) {
       setResults((prev) => prev ? { ...prev, dsl: originalDsl } : null);
@@ -598,6 +732,117 @@ export default function EditorPage() {
               smplExact={tokenCounts.smplExact}
             />
           )}
+
+          {/* UI Enhancement Buttons */}
+          {(ideaInput.trim() || results) && (
+            <div className="p-4 lg:p-8 pt-0">
+              <div className="p-4 bg-[#111215] border border-[#2F333A] rounded-lg">
+                <p className="text-xs text-[#A0A0A0] mb-3 font-medium">Enhance with Modern UI:</p>
+                <div className="flex flex-wrap gap-2 mb-3">
+                  <button
+                    onClick={() => toggleEnhancement('scroll-animations')}
+                    disabled={isEnhancing}
+                    className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                      selectedEnhancements.includes('scroll-animations')
+                        ? 'bg-[#6D5AE0] border-[#6D5AE0] text-white'
+                        : 'bg-[#1a1a1a] border-[#2F333A] text-[#ECECEC] hover:border-[#6D5AE0] hover:bg-[#6D5AE0]/10'
+                    }`}
+                    title="Add scroll-triggered animations"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Scroll</span>
+                  </button>
+                  <button
+                    onClick={() => toggleEnhancement('hover-effects')}
+                    disabled={isEnhancing}
+                    className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                      selectedEnhancements.includes('hover-effects')
+                        ? 'bg-[#6D5AE0] border-[#6D5AE0] text-white'
+                        : 'bg-[#1a1a1a] border-[#2F333A] text-[#ECECEC] hover:border-[#6D5AE0] hover:bg-[#6D5AE0]/10'
+                    }`}
+                    title="Add hover effects and interactions"
+                  >
+                    <MousePointer className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Hover</span>
+                  </button>
+                  <button
+                    onClick={() => toggleEnhancement('gradient-backgrounds')}
+                    disabled={isEnhancing}
+                    className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                      selectedEnhancements.includes('gradient-backgrounds')
+                        ? 'bg-[#6D5AE0] border-[#6D5AE0] text-white'
+                        : 'bg-[#1a1a1a] border-[#2F333A] text-[#ECECEC] hover:border-[#6D5AE0] hover:bg-[#6D5AE0]/10'
+                    }`}
+                    title="Add gradient backgrounds and effects"
+                  >
+                    <Palette className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Gradients</span>
+                  </button>
+                  <button
+                    onClick={() => toggleEnhancement('text-animations')}
+                    disabled={isEnhancing}
+                    className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                      selectedEnhancements.includes('text-animations')
+                        ? 'bg-[#6D5AE0] border-[#6D5AE0] text-white'
+                        : 'bg-[#1a1a1a] border-[#2F333A] text-[#ECECEC] hover:border-[#6D5AE0] hover:bg-[#6D5AE0]/10'
+                    }`}
+                    title="Add text animations"
+                  >
+                    <Type className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Text</span>
+                  </button>
+                  <button
+                    onClick={() => toggleEnhancement('micro-interactions')}
+                    disabled={isEnhancing}
+                    className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                      selectedEnhancements.includes('micro-interactions')
+                        ? 'bg-[#6D5AE0] border-[#6D5AE0] text-white'
+                        : 'bg-[#1a1a1a] border-[#2F333A] text-[#ECECEC] hover:border-[#6D5AE0] hover:bg-[#6D5AE0]/10'
+                    }`}
+                    title="Add micro-interactions"
+                  >
+                    <Zap className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Interactions</span>
+                  </button>
+                  <button
+                    onClick={() => toggleEnhancement('modern-layouts')}
+                    disabled={isEnhancing}
+                    className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                      selectedEnhancements.includes('modern-layouts')
+                        ? 'bg-[#6D5AE0] border-[#6D5AE0] text-white'
+                        : 'bg-[#1a1a1a] border-[#2F333A] text-[#ECECEC] hover:border-[#6D5AE0] hover:bg-[#6D5AE0]/10'
+                    }`}
+                    title="Add modern layout patterns"
+                  >
+                    <Layout className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Layouts</span>
+                  </button>
+                </div>
+                <button
+                  onClick={handleGenerateEnhancements}
+                  disabled={isEnhancing || selectedEnhancements.length === 0}
+                  className="w-full px-4 py-2 text-sm font-medium rounded-md bg-[#6D5AE0] text-white hover:bg-[#7a68e6] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {isEnhancing ? (
+                    <>
+                      <Sparkles className="w-4 h-4 animate-pulse" />
+                      <span>Enhancing...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4" />
+                      <span>Generate Enhanced Prompt</span>
+                    </>
+                  )}
+                </button>
+                {selectedEnhancements.length > 0 && !isEnhancing && (
+                  <p className="text-xs text-[#A0A0A0] mt-2 text-center">
+                    {selectedEnhancements.length} enhancement{selectedEnhancements.length > 1 ? 's' : ''} selected
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Output Panel - Full width on mobile, 55% on desktop */}
@@ -626,15 +871,15 @@ export default function EditorPage() {
                   <span>Home</span>
                 </button>
                 {results && (
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
                     {activeTab === 'dsl' && originalDsl && results.dsl !== originalDsl && (
                       <button
                         onClick={handleRefreshDsl}
-                        className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md bg-[#111215] border border-[#2F333A] text-[#ECECEC] hover:border-[#6D5AE0] transition-colors"
+                        className="flex items-center gap-1.5 lg:gap-2 px-2 lg:px-4 py-1.5 lg:py-2 text-xs lg:text-sm font-medium rounded-md bg-[#111215] border border-[#2F333A] text-[#ECECEC] hover:border-[#6D5AE0] transition-colors"
                         title="Restore original DSL"
                       >
-                        <RotateCcw className="w-4 h-4" />
-                        <span>Restore</span>
+                        <RotateCcw className="w-3.5 h-3.5 lg:w-4 lg:h-4" />
+                        <span className="hidden sm:inline">Restore</span>
                       </button>
                     )}
                     <button
